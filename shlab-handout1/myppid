@@ -1,0 +1,5 @@
+/home/cameron/Desktop/CS 324/Lab1/shlab-handout1/tsh: invalid option -- 'e'
+Usage: shell [-hvp]
+   -h   print this message
+   -v   print additional diagnostic information
+   -p   do not emit a command prompt
