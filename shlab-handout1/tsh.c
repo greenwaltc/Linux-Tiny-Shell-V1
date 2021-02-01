@@ -112,6 +112,8 @@ void eval(char *cmdline)
     int bg; /* Should the job run in bg or fg? */
     pid_t pid; /* Process id */
 
+    int pipe_fds[2];
+
     // Manually initialize each array
     for (int i = 0; i < MAXARGS; ++i) {
         cmds[i] = -1; // -1 is default because an arg can't have an index < 0
@@ -129,27 +131,107 @@ void eval(char *cmdline)
     if (argv[0] == NULL)
         return; /* Ignore empty lines */
 
+    // For each command in the input
+    int cmd_index = 0;
+    while (cmds[cmd_index] > -1) {
+
+        
+
+        cmd_index++;
+    }
+
     if (!builtin_cmd(argv)) {
 
+        // if (pipe(pipe_fds) < 0) exit(1); // pipe_fds[0] is the read end of the pipe, pipe_fds[1] is the write end
+
         if ((pid = fork()) == 0) { /* Child runs user job */
-            if (execve(argv[0], argv, environ) < 0) {
+
+            // close(pipe_fds[1]);
+
+            // Redirect standard output
+            if (stdout_redir[0] > 0) {
+                char* filename = args[stdout_redir[0]];
+                FILE* file = fopen(filename, "w");
+                int descriptor = fileno(file);
+                dup2(descriptor, 1);
+                close(descriptor);
+            }
+
+            // Redirect standard input
+            if (stdin_redir[0] > 0) {
+                char* filename = args[stdin_redir[0]];
+                FILE* file = fopen(filename, "r");
+                int descriptor = fileno(file);
+                dup2(descriptor, 0);
+                close(descriptor);
+            }
+
+            if (execve(argv[0], args, environ) < 0) {
                 printf("%s: Command not found.\n", argv[0]);
                 exit(0);
             }
+        }
+        else { // Parent processes
 
-            if (stdout_redir[0] > 0) {
-                
+            // close(pipe_fds[0]);
+
+            /* Parent waits for foreground job to terminate */
+            if (!bg) {
+                int status;
+                if (waitpid(pid, &status, 0) < 0)
+                unix_error("waitfg: waitpid error");
             }
         }
 
-        /* Parent waits for foreground job to terminate */
-        if (!bg) {
-            int status;
-            if (waitpid(pid, &status, 0) < 0)
-            unix_error("waitfg: waitpid error");
-        }
-        else
-            printf("%d %s", pid, cmdline);
+        // if (pipe(pipe_fds) < 0) exit(1); // pipe_fds[0] is the read end of the pipe, pipe_fds[1] is the write end
+
+        // if ((pid = fork()) == 0) { /* Child runs user job */
+
+        //     close(pipe_fds[1]);
+
+        //     // Redirect standard output
+        //     if (stdout_redir[0] > 0) {
+        //         char* filename = args[stdout_redir[0]];
+        //         FILE* file = fopen(filename, "w");
+        //         int descriptor = fileno(file);
+        //         dup2(descriptor, 1);
+        //         close(descriptor);
+        //     }
+
+        //     // Redirect standard input
+        //     if (stdin_redir[0] > 0) {
+        //         char* filename = args[stdin_redir[0]];
+        //         FILE* file = fopen(filename, "r");
+        //         int descriptor = fileno(file);
+        //         dup2(descriptor, 0);
+        //         close(descriptor);
+        //     }
+
+        //     if (execve(argv[0], args, environ) < 0) {
+        //         printf("%s: Command not found.\n", argv[0]);
+        //         exit(0);
+        //     }
+        // }
+        // else { // Parent processes
+
+        //     close(pipe_fds[0]);
+
+        //     /* Parent waits for foreground job to terminate */
+        //     if (!bg) {
+        //         int status;
+        //         if (waitpid(pid, &status, 0) < 0)
+        //         unix_error("waitfg: waitpid error");
+        //     }
+        // }
+
+        // // /* Parent waits for foreground job to terminate */
+        // // if (!bg) {
+        // //     int status;
+        // //     if (waitpid(pid, &status, 0) < 0)
+        // //     unix_error("waitfg: waitpid error");
+        // // }
+        // // else
+        //     // printf("%d %s", pid, cmdline);
     }
     return;
 }
