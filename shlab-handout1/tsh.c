@@ -134,23 +134,18 @@ void eval(char *cmdline)
     // For each command in the input
     int cmd_index = 0;
     while (cmds[cmd_index] > -1) {
-
         
+        if (!builtin_cmd(argv)) {
 
-        cmd_index++;
-    }
-
-    if (!builtin_cmd(argv)) {
-
-        // if (pipe(pipe_fds) < 0) exit(1); // pipe_fds[0] is the read end of the pipe, pipe_fds[1] is the write end
+        if (pipe(pipe_fds) < 0) exit(1); // pipe_fds[0] is the read end of the pipe, pipe_fds[1] is the write end
 
         if ((pid = fork()) == 0) { /* Child runs user job */
 
-            // close(pipe_fds[1]);
+            close(pipe_fds[1]);
 
             // Redirect standard output
-            if (stdout_redir[0] > 0) {
-                char* filename = args[stdout_redir[0]];
+            if (stdout_redir[cmd_index] > 0) {
+                char* filename = args[stdout_redir[cmd_index]];
                 FILE* file = fopen(filename, "w");
                 int descriptor = fileno(file);
                 dup2(descriptor, 1);
@@ -158,30 +153,51 @@ void eval(char *cmdline)
             }
 
             // Redirect standard input
-            if (stdin_redir[0] > 0) {
-                char* filename = args[stdin_redir[0]];
+            if (stdin_redir[cmd_index] > 0) {
+                char* filename = args[stdin_redir[cmd_index]];
                 FILE* file = fopen(filename, "r");
                 int descriptor = fileno(file);
                 dup2(descriptor, 0);
                 close(descriptor);
             }
 
-            if (execve(argv[0], args, environ) < 0) {
+            printf("Current cmd_index: %d", cmd_index);
+
+            // Child 1 - duplicate write end of pipe on standard out
+            if (cmd_index == 0) {
+                printf("Child 1 duping pipe_fds[1], 1\n");
+                dup2(pipe_fds[1], 1);
+                close(pipe_fds[1]);
+                close(pipe_fds[0]);
+            }
+            // Child 2 - duplicate write end of pipe on stdin
+            else if (cmd_index == 1) {
+                printf("Child 2 duping pipe_fds[0], 0\n");
+                dup2(pipe_fds[0], 0);
+                close(pipe_fds[0]);
+                close(pipe_fds[1]);
+            }
+
+            //
+            if (execve(argv[cmds[cmd_index]], args, environ) < 0) {
                 printf("%s: Command not found.\n", argv[0]);
                 exit(0);
             }
-        }
-        else { // Parent processes
 
-            // close(pipe_fds[0]);
-
-            /* Parent waits for foreground job to terminate */
-            if (!bg) {
-                int status;
-                if (waitpid(pid, &status, 0) < 0)
-                unix_error("waitfg: waitpid error");
-            }
+            // parent needs to close fds for pipe
         }
+
+        cmd_index++;
+    }
+
+    // close(pipe_fds[0]);
+
+    /* Parent waits for foreground job to terminate */
+    if (!bg) {
+        int status;
+        if (waitpid(pid, &status, 0) < 0)
+        unix_error("waitfg: waitpid error");
+    }
 
         // if (pipe(pipe_fds) < 0) exit(1); // pipe_fds[0] is the read end of the pipe, pipe_fds[1] is the write end
 
