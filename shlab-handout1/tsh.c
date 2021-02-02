@@ -14,14 +14,14 @@
 #include <errno.h>
 
 /* Misc manifest constants */
-#define MAXLINE    1024   /* max line size */
-#define MAXARGS     128   /* max args on a command line */
+#define MAXLINE 1024 /* max line size */
+#define MAXARGS 128  /* max args on a command line */
 
 /* Global variables */
-extern char **environ;      /* defined in libc */
-char prompt[] = "tsh> ";    /* command line prompt (DO NOT CHANGE) */
-int verbose = 0;            /* if true, print additional output */
-char sbuf[MAXLINE];         /* for composing sprintf messages */
+extern char **environ;   /* defined in libc */
+char prompt[] = "tsh> "; /* command line prompt (DO NOT CHANGE) */
+int verbose = 0;         /* if true, print additional output */
+char sbuf[MAXLINE];      /* for composing sprintf messages */
 
 /* Function prototypes */
 
@@ -30,7 +30,7 @@ void eval(char *cmdline);
 int builtin_cmd(char **argv);
 
 /* Here are helper routines that we've provided for you */
-int parseline(const char *cmdline, char **argv); 
+int parseline(const char *cmdline, char **argv);
 int parseargs(char **argv, int *cmds, int *stdin_redir, int *stdout_redir);
 
 void usage(void);
@@ -41,7 +41,7 @@ typedef void handler_t(int);
 /*
  * main - The shell's main routine 
  */
-int main(int argc, char **argv) 
+int main(int argc, char **argv)
 {
     char c;
     char cmdline[MAXLINE];
@@ -52,46 +52,51 @@ int main(int argc, char **argv)
     dup2(1, 2);
 
     /* Parse the command line */
-    while ((c = getopt(argc, argv, "hvp")) != EOF) {
-        switch (c) {
-        case 'h':             /* print help message */
+    while ((c = getopt(argc, argv, "hvp")) != EOF)
+    {
+        switch (c)
+        {
+        case 'h': /* print help message */
             usage();
-	    break;
-        case 'v':             /* emit additional diagnostic info */
+            break;
+        case 'v': /* emit additional diagnostic info */
             verbose = 1;
-	    break;
-        case 'p':             /* don't print a prompt */
-            emit_prompt = 0;  /* handy for automatic testing */
-	    break;
-	default:
+            break;
+        case 'p':            /* don't print a prompt */
+            emit_prompt = 0; /* handy for automatic testing */
+            break;
+        default:
             usage();
-	}
+        }
     }
 
     /* Execute the shell's read/eval loop */
-    while (1) {
+    while (1)
+    {
 
-	/* Read command line */
-	if (emit_prompt) {
-	    printf("%s", prompt);
-	    fflush(stdout);
-	}
-	if ((fgets(cmdline, MAXLINE, stdin) == NULL) && ferror(stdin))
-	    app_error("fgets error");
-	if (feof(stdin)) { /* End of file (ctrl-d) */
-	    fflush(stdout);
-	    exit(0);
-	}
+        /* Read command line */
+        if (emit_prompt)
+        {
+            printf("%s", prompt);
+            fflush(stdout);
+        }
+        if ((fgets(cmdline, MAXLINE, stdin) == NULL) && ferror(stdin))
+            app_error("fgets error");
+        if (feof(stdin))
+        { /* End of file (ctrl-d) */
+            fflush(stdout);
+            exit(0);
+        }
 
-	/* Evaluate the command line */
-	eval(cmdline);
-	fflush(stdout);
-	fflush(stdout);
-    } 
+        /* Evaluate the command line */
+        eval(cmdline);
+        fflush(stdout);
+        fflush(stdout);
+    }
 
     exit(0); /* control never reaches here */
 }
-  
+
 /* 
  * eval - Evaluate the command line that the user has just typed in
  * 
@@ -103,152 +108,160 @@ int main(int argc, char **argv)
  * background children don't receive SIGINT (SIGTSTP) from the kernel
  * when we type ctrl-c (ctrl-z) at the keyboard.  
 */
-void eval(char *cmdline) 
+void eval(char *cmdline)
 {
     char *argv[MAXARGS]; /* Argument list execve() */
     char *args[MAXARGS];
-    int cmds[MAXARGS], stdin_redir[MAXARGS], stdout_redir[MAXARGS];
     char buf[MAXLINE]; /* Holds modified command line */
-    int bg; /* Should the job run in bg or fg? */
-    pid_t pid; /* Process id */
-
+    int cmds[MAXARGS], stdin_redir[MAXARGS], stdout_redir[MAXARGS];
+    pid_t pid = -1;  /* Process id */
+    pid_t pgid = -1; // The process group ID that corresponds to the PID of the first child of the parent process
+    pid_t wpid = -1;
+    int status = 0;
     int pipe_fds[2];
+    int child_pids[MAXARGS];
 
     // Manually initialize each array
-    for (int i = 0; i < MAXARGS; ++i) {
+    for (int i = 0; i < MAXARGS; ++i)
+    {
         cmds[i] = -1; // -1 is default because an arg can't have an index < 0
     }
-    for (int i = 0; i < MAXARGS; ++i) {
-        stdin_redir[i] = 0; stdout_redir[i] = 0; // 0 is the default because values at each index will never = 0
+    for (int i = 0; i < MAXARGS; ++i)
+    {
+        stdin_redir[i] = 0;
+        stdout_redir[i] = 0; // 0 is the default because values at each index will never = 0
     }
 
     strcpy(buf, cmdline);
-    bg = parseline(buf, argv);
+    /*bg = */ parseline(buf, argv);
     parseline(buf, args);
-    
-    parseargs(args, cmds, stdin_redir, stdout_redir);
+    int num_cmds = parseargs(args, cmds, stdin_redir, stdout_redir);
 
     if (argv[0] == NULL)
         return; /* Ignore empty lines */
 
     // For each command in the input
     int cmd_index = 0;
-    while (cmds[cmd_index] > -1) {
-        
-        if (!builtin_cmd(argv)) {
+    int read_end = -1;
+    for (int i = 0; i < num_cmds; i++)
+    {
 
-        if (pipe(pipe_fds) < 0) exit(1); // pipe_fds[0] is the read end of the pipe, pipe_fds[1] is the write end
+        // printf("stuck in the for loop?\n");
 
-        if ((pid = fork()) == 0) { /* Child runs user job */
+        if (!builtin_cmd(argv))
+        {
 
-            close(pipe_fds[1]);
-
-            // Redirect standard output
-            if (stdout_redir[cmd_index] > 0) {
-                char* filename = args[stdout_redir[cmd_index]];
-                FILE* file = fopen(filename, "w");
-                int descriptor = fileno(file);
-                dup2(descriptor, 1);
-                close(descriptor);
+            if ((i != num_cmds - 1))
+            {
+                if (pipe(pipe_fds) < 0)
+                    exit(1); // pipe_fds[0] is the read end of the pipe, pipe_fds[1] is the write end
             }
 
-            // Redirect standard input
-            if (stdin_redir[cmd_index] > 0) {
-                char* filename = args[stdin_redir[cmd_index]];
-                FILE* file = fopen(filename, "r");
-                int descriptor = fileno(file);
-                dup2(descriptor, 0);
-                close(descriptor);
-            }
+            if ((pid = fork()) == 0)
+            {
 
-            printf("Current cmd_index: %d", cmd_index);
+                // close(pipe_fds[1]);
 
-            // Child 1 - duplicate write end of pipe on standard out
-            if (cmd_index == 0) {
-                printf("Child 1 duping pipe_fds[1], 1\n");
-                dup2(pipe_fds[1], 1);
-                close(pipe_fds[1]);
-                close(pipe_fds[0]);
-            }
-            // Child 2 - duplicate write end of pipe on stdin
-            else if (cmd_index == 1) {
-                printf("Child 2 duping pipe_fds[0], 0\n");
-                dup2(pipe_fds[0], 0);
-                close(pipe_fds[0]);
-                close(pipe_fds[1]);
-            }
+                // if (i == 0)
+                // {
+                //     pgid = getpid();
+                // }
 
-            //
-            if (execve(argv[cmds[cmd_index]], args, environ) < 0) {
-                printf("%s: Command not found.\n", argv[0]);
-                exit(0);
-            }
+                // Redirect standard output
+                if (stdout_redir[i] > 0)
+                {
+                    char *filename = args[stdout_redir[i]];
+                    FILE *file = fopen(filename, "w");
+                    int descriptor = fileno(file);
+                    dup2(descriptor, 1);
+                    close(descriptor);
+                }
 
-            // parent needs to close fds for pipe
+                // Redirect standard input
+                if (stdin_redir[i] > 0)
+                {
+                    char *filename = args[stdin_redir[i]];
+                    FILE *file = fopen(filename, "r");
+                    int descriptor = fileno(file);
+                    dup2(descriptor, 0);
+                    close(descriptor);
+                }
+
+                if (num_cmds > 1)
+                {
+                    // Child 1 - duplicate write end of pipe on standard out
+                    if (i == 0)
+                    {
+                        // printf("First child pipe?\n");
+                        close(pipe_fds[0]);
+                        dup2(pipe_fds[1], 1); // Duplicate write end of pipe on stdout
+                        close(pipe_fds[1]);   // Close both its descriptors that go to the pipe
+                    }
+                    // Child 2 - duplicate write end of pipe on stdin
+                    else if (i == num_cmds - 1)
+                    {
+                        // printf("Last child pipe?\n");
+                        dup2(read_end, 0); // Duplicate read end of pipe on stdin
+                        close(read_end);
+                        // close(pipe_fds[1]); // Close both its descriptors that go to the pipe
+                    }
+                    else
+                    {
+                        // three or more
+                        // printf("Middle child pipe?\n");
+                        close(pipe_fds[0]);
+                        dup2(pipe_fds[1], 1); // Duplicate write end of pipe on stdout
+                        dup2(read_end, 0);    // Duplicate read end of pipe on stdin
+                        close(pipe_fds[1]);   // Close both its descriptors that go to the pipe
+                    }
+                }
+
+                if (execve(args[cmds[i]], &args[cmds[i]], environ) < 0)
+                {
+                    printf("%s: Command not found.\n", argv[0]);
+                    exit(0);
+                }
+            }
+            else
+            {
+                if (i == 0)
+                {
+                    pgid = pid;
+                }
+
+                setpgid(pid, pgid);
+
+                child_pids[i] = pid;
+
+                read_end = pipe_fds[0];
+
+                if (num_cmds > 1) close(pipe_fds[1]);
+            }
         }
-
-        cmd_index++;
     }
-
-    // close(pipe_fds[0]);
+    // If the last child has been forked, close the pipe file descriptors for the parent
 
     /* Parent waits for foreground job to terminate */
-    if (!bg) {
-        int status;
-        if (waitpid(pid, &status, 0) < 0)
-        unix_error("waitfg: waitpid error");
+    // if (!bg)
+    // {
+    //     int status;
+    //     if (waitpid(pid, &status, 0) < 0)
+    //         unix_error("waitfg: waitpid error");
+    // }
+
+    // while ((wpid = wait(&status)) > 0)
+    //     ;
+
+    for (int i = 0; i < num_cmds; i++) {
+        waitpid((child_pids[i]), NULL, 0);
     }
 
-        // if (pipe(pipe_fds) < 0) exit(1); // pipe_fds[0] is the read end of the pipe, pipe_fds[1] is the write end
+    // waitpid(pid, NULL, 0);
+    // while ((waitpid(-1, 0, WNOHANG) > 0))
+    // {
+    //     // printf("stuck in the while loop?\n");
+    // };
 
-        // if ((pid = fork()) == 0) { /* Child runs user job */
-
-        //     close(pipe_fds[1]);
-
-        //     // Redirect standard output
-        //     if (stdout_redir[0] > 0) {
-        //         char* filename = args[stdout_redir[0]];
-        //         FILE* file = fopen(filename, "w");
-        //         int descriptor = fileno(file);
-        //         dup2(descriptor, 1);
-        //         close(descriptor);
-        //     }
-
-        //     // Redirect standard input
-        //     if (stdin_redir[0] > 0) {
-        //         char* filename = args[stdin_redir[0]];
-        //         FILE* file = fopen(filename, "r");
-        //         int descriptor = fileno(file);
-        //         dup2(descriptor, 0);
-        //         close(descriptor);
-        //     }
-
-        //     if (execve(argv[0], args, environ) < 0) {
-        //         printf("%s: Command not found.\n", argv[0]);
-        //         exit(0);
-        //     }
-        // }
-        // else { // Parent processes
-
-        //     close(pipe_fds[0]);
-
-        //     /* Parent waits for foreground job to terminate */
-        //     if (!bg) {
-        //         int status;
-        //         if (waitpid(pid, &status, 0) < 0)
-        //         unix_error("waitfg: waitpid error");
-        //     }
-        // }
-
-        // // /* Parent waits for foreground job to terminate */
-        // // if (!bg) {
-        // //     int status;
-        // //     if (waitpid(pid, &status, 0) < 0)
-        // //     unix_error("waitfg: waitpid error");
-        // // }
-        // // else
-        //     // printf("%d %s", pid, cmdline);
-    }
     return;
 }
 
@@ -268,12 +281,13 @@ void eval(char *cmdline)
  * the index in argv that holds the filename associated with the redirection.
  * 
  */
-int parseargs(char **argv, int *cmds, int *stdin_redir, int *stdout_redir) 
+int parseargs(char **argv, int *cmds, int *stdin_redir, int *stdout_redir)
 {
-    int argindex = 0;    /* the index of the current argument in the current cmd */
-    int cmdindex = 0;    /* the index of the current cmd */
+    int argindex = 0; /* the index of the current argument in the current cmd */
+    int cmdindex = 0; /* the index of the current cmd */
 
-    if (!argv[argindex]) {
+    if (!argv[argindex])
+    {
         return 0;
     }
 
@@ -281,32 +295,41 @@ int parseargs(char **argv, int *cmds, int *stdin_redir, int *stdout_redir)
     stdin_redir[cmdindex] = -1;
     stdout_redir[cmdindex] = -1;
     argindex++;
-    while (argv[argindex]) {
-        if (strcmp(argv[argindex], "<") == 0) {
+    while (argv[argindex])
+    {
+        if (strcmp(argv[argindex], "<") == 0)
+        {
             argv[argindex] = NULL;
             argindex++;
-            if (!argv[argindex]) { /* if we have reached the end, then break */
+            if (!argv[argindex])
+            { /* if we have reached the end, then break */
                 break;
-	    }
+            }
             stdin_redir[cmdindex] = argindex;
-	} else if (strcmp(argv[argindex], ">") == 0) {
+        }
+        else if (strcmp(argv[argindex], ">") == 0)
+        {
             argv[argindex] = NULL;
             argindex++;
-            if (!argv[argindex]) { /* if we have reached the end, then break */
+            if (!argv[argindex])
+            { /* if we have reached the end, then break */
                 break;
-	    }
+            }
             stdout_redir[cmdindex] = argindex;
-	} else if (strcmp(argv[argindex], "|") == 0) {
+        }
+        else if (strcmp(argv[argindex], "|") == 0)
+        {
             argv[argindex] = NULL;
             argindex++;
-            if (!argv[argindex]) { /* if we have reached the end, then break */
+            if (!argv[argindex])
+            { /* if we have reached the end, then break */
                 break;
-	    }
+            }
             cmdindex++;
             cmds[cmdindex] = argindex;
             stdin_redir[cmdindex] = -1;
             stdout_redir[cmdindex] = -1;
-	}
+        }
         argindex++;
     }
 
@@ -320,7 +343,7 @@ int parseargs(char **argv, int *cmds, int *stdin_redir, int *stdout_redir)
  * argument.  Return true if the user has requested a BG job, false if
  * the user has requested a FG job.  
  */
-int parseline(const char *cmdline, char **argv) 
+int parseline(const char *cmdline, char **argv)
 {
     static char array[MAXLINE]; /* holds local copy of command line */
     char *buf = array;          /* ptr that traverses command line */
@@ -329,43 +352,49 @@ int parseline(const char *cmdline, char **argv)
     int bg;                     /* background job? */
 
     strcpy(buf, cmdline);
-    buf[strlen(buf)-1] = ' ';  /* replace trailing '\n' with space */
+    buf[strlen(buf) - 1] = ' ';   /* replace trailing '\n' with space */
     while (*buf && (*buf == ' ')) /* ignore leading spaces */
-	buf++;
+        buf++;
 
     /* Build the argv list */
     argc = 0;
-    if (*buf == '\'') {
-	buf++;
-	delim = strchr(buf, '\'');
+    if (*buf == '\'')
+    {
+        buf++;
+        delim = strchr(buf, '\'');
     }
-    else {
-	delim = strchr(buf, ' ');
+    else
+    {
+        delim = strchr(buf, ' ');
     }
 
-    while (delim) {
-	argv[argc++] = buf;
-	*delim = '\0';
-	buf = delim + 1;
-	while (*buf && (*buf == ' ')) /* ignore spaces */
-	       buf++;
+    while (delim)
+    {
+        argv[argc++] = buf;
+        *delim = '\0';
+        buf = delim + 1;
+        while (*buf && (*buf == ' ')) /* ignore spaces */
+            buf++;
 
-	if (*buf == '\'') {
-	    buf++;
-	    delim = strchr(buf, '\'');
-	}
-	else {
-	    delim = strchr(buf, ' ');
-	}
+        if (*buf == '\'')
+        {
+            buf++;
+            delim = strchr(buf, '\'');
+        }
+        else
+        {
+            delim = strchr(buf, ' ');
+        }
     }
     argv[argc] = NULL;
-    
-    if (argc == 0)  /* ignore blank line */
-	return 1;
+
+    if (argc == 0) /* ignore blank line */
+        return 1;
 
     /* should the job run in the background? */
-    if ((bg = (*argv[argc-1] == '&')) != 0) {
-	argv[--argc] = NULL;
+    if ((bg = (*argv[argc - 1] == '&')) != 0)
+    {
+        argv[--argc] = NULL;
     }
     return bg;
 }
@@ -374,13 +403,14 @@ int parseline(const char *cmdline, char **argv)
  * builtin_cmd - If the user has typed a built-in command then execute
  *    it immediately.  
  */
-int builtin_cmd(char **argv) 
+int builtin_cmd(char **argv)
 {
     char *cmd = argv[0];
-    if (strcmp(cmd, "quit") == 0){
+    if (strcmp(cmd, "quit") == 0)
+    {
         exit(0);
     }
-    return 0;     /* not a builtin command */
+    return 0; /* not a builtin command */
 }
 
 /***********************
@@ -390,7 +420,7 @@ int builtin_cmd(char **argv)
 /*
  * usage - print a help message
  */
-void usage(void) 
+void usage(void)
 {
     printf("Usage: shell [-hvp]\n");
     printf("   -h   print this message\n");
