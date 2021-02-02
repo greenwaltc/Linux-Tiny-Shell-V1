@@ -159,14 +159,6 @@ void eval(char *cmdline)
 
             if ((pid = fork()) == 0)
             {
-
-                // close(pipe_fds[1]);
-
-                // if (i == 0)
-                // {
-                //     pgid = getpid();
-                // }
-
                 // Redirect standard output
                 if (stdout_redir[i] > 0)
                 {
@@ -192,7 +184,6 @@ void eval(char *cmdline)
                     // Child 1 - duplicate write end of pipe on standard out
                     if (i == 0)
                     {
-                        // printf("First child pipe?\n");
                         close(pipe_fds[0]);
                         dup2(pipe_fds[1], 1); // Duplicate write end of pipe on stdout
                         close(pipe_fds[1]);   // Close both its descriptors that go to the pipe
@@ -203,12 +194,10 @@ void eval(char *cmdline)
                         // printf("Last child pipe?\n");
                         dup2(read_end, 0); // Duplicate read end of pipe on stdin
                         close(read_end);
-                        // close(pipe_fds[1]); // Close both its descriptors that go to the pipe
                     }
                     else
                     {
                         // three or more
-                        // printf("Middle child pipe?\n");
                         close(pipe_fds[0]);
                         dup2(pipe_fds[1], 1); // Duplicate write end of pipe on stdout
                         dup2(read_end, 0);    // Duplicate read end of pipe on stdin
@@ -239,18 +228,6 @@ void eval(char *cmdline)
             }
         }
     }
-    // If the last child has been forked, close the pipe file descriptors for the parent
-
-    /* Parent waits for foreground job to terminate */
-    // if (!bg)
-    // {
-    //     int status;
-    //     if (waitpid(pid, &status, 0) < 0)
-    //         unix_error("waitfg: waitpid error");
-    // }
-
-    // while ((wpid = wait(&status)) > 0)
-    //     ;
 
     for (int i = 0; i < num_cmds; i++) {
         waitpid((child_pids[i]), NULL, 0);
